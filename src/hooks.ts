@@ -1,16 +1,12 @@
-import React, {
-  useRef,
-  useState,
-  useMemo,
-  useCallback,
-  useEffect,
-} from 'react';
+import { useRef, useState, useMemo, useCallback, useEffect } from 'react';
 import { MMKV, MMKVConfiguration } from './MMKV';
 
 function isConfigurationEqual(
-  left: MMKVConfiguration,
-  right: MMKVConfiguration
+  left?: MMKVConfiguration,
+  right?: MMKVConfiguration
 ): boolean {
+  if (left == null || right == null) return left == null && right == null;
+
   return (
     left.encryptionKey === right.encryptionKey &&
     left.id === right.id &&
@@ -26,14 +22,23 @@ function getDefaultInstance(): MMKV {
   return defaultInstance;
 }
 
-export function useMMKV(
-  configuration: MMKVConfiguration
-): React.RefObject<MMKV> {
+/**
+ * Use the default, shared MMKV instance.
+ */
+export function useMMKV(): MMKV;
+/**
+ * Use a custom MMKV instance with the given configuration.
+ * @param configuration The configuration to initialize the MMKV instance with. Does not have to be memoized.
+ */
+export function useMMKV(configuration: MMKVConfiguration): MMKV;
+export function useMMKV(configuration?: MMKVConfiguration): MMKV {
   const instance = useRef<MMKV>();
-
   const lastConfiguration = useRef<MMKVConfiguration>();
+
+  if (configuration == null) return getDefaultInstance();
+
   if (
-    lastConfiguration.current == null ||
+    instance.current == null ||
     !isConfigurationEqual(lastConfiguration.current, configuration)
   ) {
     lastConfiguration.current = configuration;
@@ -58,6 +63,7 @@ function createMMKVHook<
     const valueRef = useRef<T>(value);
     valueRef.current = value;
 
+    // update value by user set
     const set = useCallback(
       (v: TSetAction) => {
         const newValue = typeof v === 'function' ? v(valueRef.current) : v;
@@ -77,6 +83,16 @@ function createMMKVHook<
       [key, mmkv]
     );
 
+    // update value if key changes
+    const keyRef = useRef(key);
+    useEffect(() => {
+      if (key !== keyRef.current) {
+        setValue(getter(mmkv, key));
+        keyRef.current = key;
+      }
+    }, [key, mmkv]);
+
+    // update value if it changes somewhere else (second hook, same key)
     useEffect(() => {
       const listener = mmkv.addOnValueChangedListener((changedKey) => {
         if (changedKey === key) {
@@ -166,4 +182,34 @@ export function useMMKVObject<T>(
   );
 
   return [value, setValue];
+}
+
+/**
+ * Listen for changes in the given MMKV storage instance.
+ * If no instance is passed, the default instance will be used.
+ * @param valueChangedListener The function to call whenever a value inside the storage instance changes
+ * @param instance The instance to listen to changes to (or the default instance)
+ *
+ * @example
+ * ```ts
+ * useMMKVListener((key) => {
+ *   console.log(`Value for "${key}" changed!`)
+ * })
+ * ```
+ */
+export function useMMKVListener(
+  valueChangedListener: (key: string) => void,
+  instance?: MMKV
+): void {
+  const ref = useRef(valueChangedListener);
+  ref.current = valueChangedListener;
+
+  const mmkv = instance ?? getDefaultInstance();
+
+  useEffect(() => {
+    const listener = mmkv.addOnValueChangedListener((changedKey) => {
+      ref.current(changedKey);
+    });
+    return () => listener.remove();
+  }, [mmkv]);
 }
