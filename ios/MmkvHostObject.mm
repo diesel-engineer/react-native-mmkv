@@ -12,7 +12,11 @@
 
 MmkvHostObject::MmkvHostObject(NSString* instanceId, NSString* path, NSString* cryptKey) {
   NSData* cryptData = cryptKey == nil ? nil : [cryptKey dataUsingEncoding:NSUTF8StringEncoding];
-  instance = [MMKV mmkvWithID:instanceId cryptKey:cryptData rootPath:path];
+
+  NSArray *paths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES);
+  NSString *libraryPath = (NSString *) [paths firstObject];
+  NSString *rootDir = [libraryPath stringByAppendingPathComponent:@"jsi/mmkv"];
+  instance = [MMKV mmkvWithID:instanceId cryptKey:cryptData rootPath:rootDir];
 
   if (instance == nil) {
     // Check if instanceId is invalid

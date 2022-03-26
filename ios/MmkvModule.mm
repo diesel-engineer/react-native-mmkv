@@ -14,6 +14,8 @@ using namespace facebook;
 
 RCT_EXPORT_MODULE(MMKV)
 
+NSString *appId;
+
 + (NSString*)getPropertyAsStringOrNilFromObject:(jsi::Object&)object
                                    propertyName:(std::string)propertyName
                                         runtime:(jsi::Runtime&)runtime
@@ -21,6 +23,30 @@ RCT_EXPORT_MODULE(MMKV)
     jsi::Value value = object.getProperty(runtime, propertyName.c_str());
     std::string string = value.isString() ? value.asString(runtime).utf8(runtime) : "";
     return string.length() > 0 ? [NSString stringWithUTF8String:string.c_str()] : nil;
+}
+
+- (id)init
+ {
+     self = [super init];
+     if (self) {
+         appId = @"";
+     }
+     return self;
+ }
+
+- (id)init:(NSString *)appID bundleURL:(NSURL *)bundleURL
+{
+    self = [super init];
+    if (self) {
+        appId = appID;
+    }
+
+    return self;
+}
+
++ (BOOL)requiresMainQueueSetup
+{
+    return YES;
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install:(nullable NSString*)storageDirectory)
@@ -40,8 +66,12 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install:(nullable NSString*)storageDirect
     }
     auto& runtime = *jsiRuntime;
     
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES);
+    NSString *libraryPath = (NSString *) [paths firstObject];
+    NSString *rootDir = [libraryPath stringByAppendingPathComponent:@"jsi/mmkv"];
+    
     RCTUnsafeExecuteOnMainQueueSync(^{
-      [MMKV initializeMMKV:storageDirectory];
+      [MMKV initializeMMKV:rootDir];
     });
     
     // MMKV.createNewInstance()
@@ -61,7 +91,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install:(nullable NSString*)storageDirect
         NSString* path = [MmkvModule getPropertyAsStringOrNilFromObject:config propertyName:"path" runtime:runtime];
         NSString* encryptionKey = [MmkvModule getPropertyAsStringOrNilFromObject:config propertyName:"encryptionKey" runtime:runtime];
         
-        auto instance = std::make_shared<MmkvHostObject>(instanceId, path, encryptionKey);
+        auto instance = std::make_shared<MmkvHostObject>([instanceId stringByAppendingString: appId], path, encryptionKey);
         return jsi::Object::createFromHostObject(runtime, instance);
     });
     runtime.global().setProperty(runtime, "mmkvCreateNewInstance", std::move(mmkvCreateNewInstance));
